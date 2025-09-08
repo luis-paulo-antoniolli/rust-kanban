@@ -1,0 +1,810 @@
+# Cargo.toml
+[package]
+name = "kanban-backend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sled = "0.34"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+anyhow = "1.0"
+thiserror = "1.0"
+
+---
+
+# src/main.rs
+mod models;
+mod database;
+mod kanban;
+
+use crate::kanban::KanbanService;
+use crate::models::*;
+use anyhow::Result;
+
+fn main() -> Result<()> {
+    println!("🚀 Iniciando Kanban Backend");
+    
+    // Criar o serviço Kanban
+    let kanban = KanbanService::new("kanban_data")?;
+    
+    // Exemplo de uso
+    demo_usage(kanban)?;
+    
+    println!("✅ Demo concluído com sucesso!");
+    Ok(())
+}
+
+fn demo_usage(mut kanban: KanbanService) -> Result<()> {
+    println!("\n📋 Demonstração do Kanban Backend\n");
+    
+    // Criar um board
+    let board_req = CreateBoardRequest {
+        name: "Projeto Kanban em Rust".to_string(),
+        description: Some("Backend local com Sled".to_string()),
+    };
+    
+    let board = kanban.create_board(board_req)?;
+    println!("✅ Board criado: {} (ID: {})", board.name, board.id);
+    
+    // Criar colunas
+    let todo_column = kanban.create_column(&board.id, CreateColumnRequest {
+        name: "📝 To Do".to_string(),
+        color: Some("#ff6b6b".to_string()),
+    })?;
+    
+    let in_progress_column = kanban.create_column(&board.id, CreateColumnRequest {
+        name: "🔥 In Progress".to_string(),
+        color: Some("#4ecdc4".to_string()),
+    })?;
+    
+    let done_column = kanban.create_column(&board.id, CreateColumnRequest {
+        name: "✅ Done".to_string(),
+        color: Some("#45b7d1".to_string()),
+    })?;
+    
+    println!("✅ Colunas criadas: To Do, In Progress, Done");
+    
+    // Criar algumas tarefas
+    let task1 = kanban.create_task(&todo_column.id, CreateTaskRequest {
+        title: "Implementar estrutura de dados".to_string(),
+        description: Some("Definir models e traits básicos".to_string()),
+        priority: Some(TaskPriority::High),
+        assigned_to: Some("dev@exemplo.com".to_string()),
+        due_date: None,
+    })?;
+    
+    let task2 = kanban.create_task(&todo_column.id, CreateTaskRequest {
+        title: "Configurar banco Sled".to_string(),
+        description: Some("Setup inicial do Sled database".to_string()),
+        priority: Some(TaskPriority::Medium),
+        assigned_to: Some("dev@exemplo.com".to_string()),
+        due_date: None,
+    })?;
+    
+    let task3 = kanban.create_task(&in_progress_column.id, CreateTaskRequest {
+        title: "Implementar CRUD operations".to_string(),
+        description: Some("Create, Read, Update, Delete para todas as entidades".to_string()),
+        priority: Some(TaskPriority::Critical),
+        assigned_to: Some("senior@exemplo.com".to_string()),
+        due_date: None,
+    })?;
+    
+    println!("✅ Tarefas criadas");
+    
+    // Mover uma tarefa
+    kanban.move_task(&task1.id, MoveTaskRequest {
+        column_id: in_progress_column.id.clone(),
+        position: 1,
+    })?;
+    
+    println!("✅ Tarefa '{}' movida para In Progress", task1.title);
+    
+    // Atualizar status de uma tarefa
+    kanban.update_task(&task2.id, UpdateTaskRequest {
+        status: Some(TaskStatus::Done),
+        ..Default::default()
+    })?;
+    
+    // Mover para Done
+    kanban.move_task(&task2.id, MoveTaskRequest {
+        column_id: done_column.id.clone(),
+        position: 1,
+    })?;
+    
+    println!("✅ Tarefa '{}' concluída", task2.title);
+    
+    // Listar todos os boards
+    let boards = kanban.get_all_boards()?;
+    println!("\n📊 Boards disponíveis: {}", boards.len());
+    
+    // Obter board completo com detalhes
+    if let Some(board_details) = kanban.get_board_with_details(&board.id)? {
+        println!("\n🎯 Board: {}", board_details.name);
+        println!("📝 Descrição: {}", board_details.description.unwrap_or("N/A".to_string()));
+        println!("🏛️ Colunas: {}", board_details.columns.len());
+        
+        for column in &board_details.columns {
+            println!("  📂 {}: {} tarefas", column.name, column.tasks.len());
+            for task in &column.tasks {
+                println!("    - {} [{}] ({})", 
+                    task.title, 
+                    format!("{:?}", task.priority),
+                    format!("{:?}", task.status)
+                );
+            }
+        }
+    }
+    
+    // Estatísticas
+    let stats = kanban.get_board_statistics(&board.id)?;
+    println!("\n📈 Estatísticas:");
+    println!("  Total de tarefas: {}", stats.total_tasks);
+    println!("  Tarefas concluídas: {}", stats.completed_tasks);
+    println!("  Tarefas em progresso: {}", stats.in_progress_tasks);
+    println!("  Taxa de conclusão: {:.1}%", stats.completion_rate);
+    
+    Ok(())
+}
+
+---
+
+# src/models.rs
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Board {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Column {
+    pub id: String,
+    pub board_id: String,
+    pub name: String,
+    pub position: i32,
+    pub color: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Task {
+    pub id: String,
+    pub column_id: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub position: i32,
+    pub priority: TaskPriority,
+    pub status: TaskStatus,
+    pub assigned_to: Option<String>,
+    pub due_date: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TaskPriority {
+    Low,
+    Medium,
+    High,
+    Critical,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TaskStatus {
+    Todo,
+    InProgress,
+    Done,
+    Blocked,
+}
+
+impl Default for TaskPriority {
+    fn default() -> Self {
+        TaskPriority::Medium
+    }
+}
+
+impl Default for TaskStatus {
+    fn default() -> Self {
+        TaskStatus::Todo
+    }
+}
+
+// DTOs para criação e atualização
+#[derive(Debug, Deserialize)]
+pub struct CreateBoardRequest {
+    pub name: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct UpdateBoardRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateColumnRequest {
+    pub name: String,
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct UpdateColumnRequest {
+    pub name: Option<String>,
+    pub color: Option<String>,
+    pub position: Option<i32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateTaskRequest {
+    pub title: String,
+    pub description: Option<String>,
+    pub priority: Option<TaskPriority>,
+    pub assigned_to: Option<String>,
+    pub due_date: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct UpdateTaskRequest {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub priority: Option<TaskPriority>,
+    pub status: Option<TaskStatus>,
+    pub assigned_to: Option<String>,
+    pub due_date: Option<DateTime<Utc>>,
+    pub position: Option<i32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MoveTaskRequest {
+    pub column_id: String,
+    pub position: i32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BoardWithDetails {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub columns: Vec<ColumnWithTasks>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ColumnWithTasks {
+    pub id: String,
+    pub board_id: String,
+    pub name: String,
+    pub position: i32,
+    pub color: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub tasks: Vec<Task>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BoardStatistics {
+    pub total_tasks: usize,
+    pub completed_tasks: usize,
+    pub in_progress_tasks: usize,
+    pub todo_tasks: usize,
+    pub blocked_tasks: usize,
+    pub completion_rate: f64,
+    pub high_priority_tasks: usize,
+    pub overdue_tasks: usize,
+}
+
+---
+
+# src/database.rs
+use crate::models::*;
+use anyhow::Result;
+use serde_json;
+use sled::{Db, IVec};
+use std::collections::BTreeMap;
+use thiserror::Error;
+use uuid::Uuid;
+
+#[derive(Error, Debug)]
+pub enum DatabaseError {
+    #[error("Item not found")]
+    NotFound,
+    #[error("Serialization error: {0}")]
+    Serialization(#[from] serde_json::Error),
+    #[error("Database error: {0}")]
+    Database(#[from] sled::Error),
+    #[error("Invalid data format")]
+    InvalidData,
+}
+
+pub struct SledDatabase {
+    db: Db,
+}
+
+impl SledDatabase {
+    pub fn new(path: &str) -> Result<Self> {
+        let db = sled::open(path)?;
+        Ok(Self { db })
+    }
+
+    // Prefixos para diferentes tipos de dados
+    const BOARD_PREFIX: &'static str = "board:";
+    const COLUMN_PREFIX: &'static str = "column:";
+    const TASK_PREFIX: &'static str = "task:";
+    const BOARD_COLUMNS_PREFIX: &'static str = "board_columns:";
+    const COLUMN_TASKS_PREFIX: &'static str = "column_tasks:";
+
+    // Helper methods
+    fn serialize<T: serde::Serialize>(&self, item: &T) -> Result<Vec<u8>, DatabaseError> {
+        Ok(serde_json::to_vec(item)?)
+    }
+
+    fn deserialize<T: serde::de::DeserializeOwned>(&self, data: &[u8]) -> Result<T, DatabaseError> {
+        Ok(serde_json::from_slice(data)?)
+    }
+
+    // Board operations
+    pub fn create_board(&self, board: Board) -> Result<Board, DatabaseError> {
+        let key = format!("{}{}", Self::BOARD_PREFIX, board.id);
+        let data = self.serialize(&board)?;
+        self.db.insert(key, data)?;
+        Ok(board)
+    }
+
+    pub fn get_board(&self, board_id: &str) -> Result<Option<Board>, DatabaseError> {
+        let key = format!("{}{}", Self::BOARD_PREFIX, board_id);
+        match self.db.get(key)? {
+            Some(data) => Ok(Some(self.deserialize(&data)?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn get_all_boards(&self) -> Result<Vec<Board>, DatabaseError> {
+        let prefix = Self::BOARD_PREFIX.as_bytes();
+        let mut boards = Vec::new();
+        
+        for result in self.db.scan_prefix(prefix) {
+            let (_key, value) = result?;
+            let board: Board = self.deserialize(&value)?;
+            boards.push(board);
+        }
+        
+        // Ordenar por data de criação (mais recente primeiro)
+        boards.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        Ok(boards)
+    }
+
+    pub fn update_board(&self, board_id: &str, updates: UpdateBoardRequest) -> Result<Option<Board>, DatabaseError> {
+        let key = format!("{}{}", Self::BOARD_PREFIX, board_id);
+        
+        match self.db.get(&key)? {
+            Some(data) => {
+                let mut board: Board = self.deserialize(&data)?;
+                
+                if let Some(name) = updates.name {
+                    board.name = name;
+                }
+                if let Some(description) = updates.description {
+                    board.description = Some(description);
+                }
+                board.updated_at = chrono::Utc::now();
+                
+                let updated_data = self.serialize(&board)?;
+                self.db.insert(key, updated_data)?;
+                Ok(Some(board))
+            }
+            None => Ok(None),
+        }
+    }
+
+    pub fn delete_board(&self, board_id: &str) -> Result<bool, DatabaseError> {
+        let key = format!("{}{}", Self::BOARD_PREFIX, board_id);
+        
+        // Primeiro, deletar todas as colunas e tarefas relacionadas
+        self.delete_board_columns(board_id)?;
+        
+        // Deletar o board
+        match self.db.remove(key)? {
+            Some(_) => Ok(true),
+            None => Ok(false),
+        }
+    }
+
+    // Column operations
+    pub fn create_column(&self, column: Column) -> Result<Column, DatabaseError> {
+        let key = format!("{}{}", Self::COLUMN_PREFIX, column.id);
+        let data = self.serialize(&column)?;
+        self.db.insert(key, data)?;
+        
+        // Adicionar à lista de colunas do board
+        self.add_column_to_board(&column.board_id, &column.id)?;
+        
+        Ok(column)
+    }
+
+    pub fn get_column(&self, column_id: &str) -> Result<Option<Column>, DatabaseError> {
+        let key = format!("{}{}", Self::COLUMN_PREFIX, column_id);
+        match self.db.get(key)? {
+            Some(data) => Ok(Some(self.deserialize(&data)?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn get_board_columns(&self, board_id: &str) -> Result<Vec<Column>, DatabaseError> {
+        let columns_key = format!("{}{}", Self::BOARD_COLUMNS_PREFIX, board_id);
+        let mut columns = Vec::new();
+        
+        if let Some(column_ids_data) = self.db.get(columns_key)? {
+            let column_ids: Vec<String> = self.deserialize(&column_ids_data)?;
+            
+            for column_id in column_ids {
+                if let Some(column) = self.get_column(&column_id)? {
+                    columns.push(column);
+                }
+            }
+        }
+        
+        // Ordenar por posição
+        columns.sort_by_key(|c| c.position);
+        Ok(columns)
+    }
+
+    pub fn delete_column(&self, column_id: &str) -> Result<bool, DatabaseError> {
+        // Primeiro, obter a coluna para saber o board_id
+        let column = match self.get_column(column_id)? {
+            Some(col) => col,
+            None => return Ok(false),
+        };
+        
+        // Deletar todas as tarefas da coluna
+        self.delete_column_tasks(column_id)?;
+        
+        // Remover da lista de colunas do board
+        self.remove_column_from_board(&column.board_id, column_id)?;
+        
+        // Deletar a coluna
+        let key = format!("{}{}", Self::COLUMN_PREFIX, column_id);
+        match self.db.remove(key)? {
+            Some(_) => Ok(true),
+            None => Ok(false),
+        }
+    }
+
+    // Task operations
+    pub fn create_task(&self, task: Task) -> Result<Task, DatabaseError> {
+        let key = format!("{}{}", Self::TASK_PREFIX, task.id);
+        let data = self.serialize(&task)?;
+        self.db.insert(key, data)?;
+        
+        // Adicionar à lista de tarefas da coluna
+        self.add_task_to_column(&task.column_id, &task.id)?;
+        
+        Ok(task)
+    }
+
+    pub fn get_task(&self, task_id: &str) -> Result<Option<Task>, DatabaseError> {
+        let key = format!("{}{}", Self::TASK_PREFIX, task_id);
+        match self.db.get(key)? {
+            Some(data) => Ok(Some(self.deserialize(&data)?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn get_column_tasks(&self, column_id: &str) -> Result<Vec<Task>, DatabaseError> {
+        let tasks_key = format!("{}{}", Self::COLUMN_TASKS_PREFIX, column_id);
+        let mut tasks = Vec::new();
+        
+        if let Some(task_ids_data) = self.db.get(tasks_key)? {
+            let task_ids: Vec<String> = self.deserialize(&task_ids_data)?;
+            
+            for task_id in task_ids {
+                if let Some(task) = self.get_task(&task_id)? {
+                    tasks.push(task);
+                }
+            }
+        }
+        
+        // Ordenar por posição
+        tasks.sort_by_key(|t| t.position);
+        Ok(tasks)
+    }
+
+    pub fn update_task(&self, task_id: &str, updates: UpdateTaskRequest) -> Result<Option<Task>, DatabaseError> {
+        let key = format!("{}{}", Self::TASK_PREFIX, task_id);
+        
+        match self.db.get(&key)? {
+            Some(data) => {
+                let mut task: Task = self.deserialize(&data)?;
+                
+                if let Some(title) = updates.title {
+                    task.title = title;
+                }
+                if let Some(description) = updates.description {
+                    task.description = Some(description);
+                }
+                if let Some(priority) = updates.priority {
+                    task.priority = priority;
+                }
+                if let Some(status) = updates.status {
+                    task.status = status;
+                }
+                if let Some(assigned_to) = updates.assigned_to {
+                    task.assigned_to = Some(assigned_to);
+                }
+                if let Some(due_date) = updates.due_date {
+                    task.due_date = Some(due_date);
+                }
+                if let Some(position) = updates.position {
+                    task.position = position;
+                }
+                task.updated_at = chrono::Utc::now();
+                
+                let updated_data = self.serialize(&task)?;
+                self.db.insert(key, updated_data)?;
+                Ok(Some(task))
+            }
+            None => Ok(None),
+        }
+    }
+
+    pub fn move_task(&self, task_id: &str, new_column_id: &str, new_position: i32) -> Result<Option<Task>, DatabaseError> {
+        let task = match self.get_task(task_id)? {
+            Some(task) => task,
+            None => return Ok(None),
+        };
+        
+        let old_column_id = task.column_id.clone();
+        
+        // Se mudou de coluna, remover da antiga e adicionar na nova
+        if old_column_id != new_column_id {
+            self.remove_task_from_column(&old_column_id, task_id)?;
+            self.add_task_to_column(new_column_id, task_id)?;
+        }
+        
+        // Atualizar a tarefa
+        let updates = UpdateTaskRequest {
+            position: Some(new_position),
+            ..Default::default()
+        };
+        
+        let mut updated_task = self.update_task(task_id, updates)?.unwrap();
+        updated_task.column_id = new_column_id.to_string();
+        
+        // Salvar novamente com o column_id atualizado
+        let key = format!("{}{}", Self::TASK_PREFIX, task_id);
+        let data = self.serialize(&updated_task)?;
+        self.db.insert(key, data)?;
+        
+        Ok(Some(updated_task))
+    }
+
+    pub fn delete_task(&self, task_id: &str) -> Result<bool, DatabaseError> {
+        // Primeiro, obter a tarefa para saber o column_id
+        let task = match self.get_task(task_id)? {
+            Some(task) => task,
+            None => return Ok(false),
+        };
+        
+        // Remover da lista de tarefas da coluna
+        self.remove_task_from_column(&task.column_id, task_id)?;
+        
+        // Deletar a tarefa
+        let key = format!("{}{}", Self::TASK_PREFIX, task_id);
+        match self.db.remove(key)? {
+            Some(_) => Ok(true),
+            None => Ok(false),
+        }
+    }
+
+    // Helper methods para gerenciar relacionamentos
+    fn add_column_to_board(&self, board_id: &str, column_id: &str) -> Result<(), DatabaseError> {
+        let key = format!("{}{}", Self::BOARD_COLUMNS_PREFIX, board_id);
+        let mut column_ids: Vec<String> = match self.db.get(&key)? {
+            Some(data) => self.deserialize(&data)?,
+            None => Vec::new(),
+        };
+        
+        if !column_ids.contains(&column_id.to_string()) {
+            column_ids.push(column_id.to_string());
+            let data = self.serialize(&column_ids)?;
+            self.db.insert(key, data)?;
+        }
+        
+        Ok(())
+    }
+
+    fn remove_column_from_board(&self, board_id: &str, column_id: &str) -> Result<(), DatabaseError> {
+        let key = format!("{}{}", Self::BOARD_COLUMNS_PREFIX, board_id);
+        if let Some(data) = self.db.get(&key)? {
+            let mut column_ids: Vec<String> = self.deserialize(&data)?;
+            column_ids.retain(|id| id != column_id);
+            let updated_data = self.serialize(&column_ids)?;
+            self.db.insert(key, updated_data)?;
+        }
+        Ok(())
+    }
+
+    fn add_task_to_column(&self, column_id: &str, task_id: &str) -> Result<(), DatabaseError> {
+        let key = format!("{}{}", Self::COLUMN_TASKS_PREFIX, column_id);
+        let mut task_ids: Vec<String> = match self.db.get(&key)? {
+            Some(data) => self.deserialize(&data)?,
+            None => Vec::new(),
+        };
+        
+        if !task_ids.contains(&task_id.to_string()) {
+            task_ids.push(task_id.to_string());
+            let data = self.serialize(&task_ids)?;
+            self.db.insert(key, data)?;
+        }
+        
+        Ok(())
+    }
+
+    fn remove_task_from_column(&self, column_id: &str, task_id: &str) -> Result<(), DatabaseError> {
+        let key = format!("{}{}", Self::COLUMN_TASKS_PREFIX, column_id);
+        if let Some(data) = self.db.get(&key)? {
+            let mut task_ids: Vec<String> = self.deserialize(&data)?;
+            task_ids.retain(|id| id != task_id);
+            let updated_data = self.serialize(&task_ids)?;
+            self.db.insert(key, updated_data)?;
+        }
+        Ok(())
+    }
+
+    fn delete_board_columns(&self, board_id: &str) -> Result<(), DatabaseError> {
+        let columns = self.get_board_columns(board_id)?;
+        for column in columns {
+            self.delete_column(&column.id)?;
+        }
+        
+        // Remover a lista de colunas do board
+        let key = format!("{}{}", Self::BOARD_COLUMNS_PREFIX, board_id);
+        self.db.remove(key)?;
+        
+        Ok(())
+    }
+
+    fn delete_column_tasks(&self, column_id: &str) -> Result<(), DatabaseError> {
+        let tasks = self.get_column_tasks(column_id)?;
+        for task in tasks {
+            self.delete_task(&task.id)?;
+        }
+        
+        // Remover a lista de tarefas da coluna
+        let key = format!("{}{}", Self::COLUMN_TASKS_PREFIX, column_id);
+        self.db.remove(key)?;
+        
+        Ok(())
+    }
+
+    pub fn get_next_position_for_column(&self, board_id: &str) -> Result<i32, DatabaseError> {
+        let columns = self.get_board_columns(board_id)?;
+        let max_position = columns.iter().map(|c| c.position).max().unwrap_or(0);
+        Ok(max_position + 1)
+    }
+
+    pub fn get_next_position_for_task(&self, column_id: &str) -> Result<i32, DatabaseError> {
+        let tasks = self.get_column_tasks(column_id)?;
+        let max_position = tasks.iter().map(|t| t.position).max().unwrap_or(0);
+        Ok(max_position + 1)
+    }
+}
+
+---
+
+# src/kanban.rs
+use crate::database::{DatabaseError, SledDatabase};
+use crate::models::*;
+use anyhow::Result;
+use chrono::Utc;
+use uuid::Uuid;
+
+pub struct KanbanService {
+    db: SledDatabase,
+}
+
+impl KanbanService {
+    pub fn new(db_path: &str) -> Result<Self> {
+        let db = SledDatabase::new(db_path)?;
+        Ok(Self { db })
+    }
+
+    // Board operations
+    pub fn create_board(&mut self, req: CreateBoardRequest) -> Result<Board> {
+        let now = Utc::now();
+        let board = Board {
+            id: Uuid::new_v4().to_string(),
+            name: req.name,
+            description: req.description,
+            created_at: now,
+            updated_at: now,
+        };
+
+        Ok(self.db.create_board(board)?)
+    }
+
+    pub fn get_all_boards(&self) -> Result<Vec<Board>> {
+        Ok(self.db.get_all_boards()?)
+    }
+
+    pub fn get_board(&self, board_id: &str) -> Result<Option<Board>> {
+        Ok(self.db.get_board(board_id)?)
+    }
+
+    pub fn get_board_with_details(&self, board_id: &str) -> Result<Option<BoardWithDetails>> {
+        let board = match self.db.get_board(board_id)? {
+            Some(board) => board,
+            None => return Ok(None),
+        };
+
+        let columns = self.db.get_board_columns(board_id)?;
+        let mut columns_with_tasks = Vec::new();
+
+        for column in columns {
+            let tasks = self.db.get_column_tasks(&column.id)?;
+            columns_with_tasks.push(ColumnWithTasks {
+                id: column.id,
+                board_id: column.board_id,
+                name: column.name,
+                position: column.position,
+                color: column.color,
+                created_at: column.created_at,
+                updated_at: column.updated_at,
+                tasks,
+            });
+        }
+
+        Ok(Some(BoardWithDetails {
+            id: board.id,
+            name: board.name,
+            description: board.description,
+            created_at: board.created_at,
+            updated_at: board.updated_at,
+            columns: columns_with_tasks,
+        }))
+    }
+
+    pub fn update_board(&mut self, board_id: &str, req: UpdateBoardRequest) -> Result<Option<Board>> {
+        Ok(self.db.update_board(board_id, req)?)
+    }
+
+    pub fn delete_board(&mut self, board_id: &str) -> Result<bool> {
+        Ok(self.db.delete_board(board_id)?)
+    }
+
+    // Column operations
+    pub fn create_column(&mut self, board_id: &str, req: CreateColumnRequest) -> Result<Column> {
+        let now = Utc::now();
+        let position = self.db.get_next_position_for_column(board_id)?;
+
+        let column = Column {
+            id: Uuid::new_v4().to_string(),
+            board_id: board_id.to_string(),
+            name: req.name,
+            position,
+            color: req.color,
+            created_at: now,
+            updated_at: now,
+        };
+
+        Ok(self.db.create_column(column)?)
+    }
+
+    pub fn get_column(&self, column_id: &str) -> Result<Option<Column>> {
+        Ok(self.db.get_column(column_id)?)
+    }
+
+    pub fn update_column(&mut self, column_id: &str, req: UpdateColumnRequest) -> Result<Option<Column>> {
+        // Implementar update no database
+        // Por enquanto, retornar None
