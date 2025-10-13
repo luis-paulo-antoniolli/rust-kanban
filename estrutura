@@ -1,0 +1,5 @@
+#estrutura
+kanban_rust/
+├── Cargo.toml
+└── src/
+    └── main.rs
