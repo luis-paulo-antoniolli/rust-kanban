@@ -1,0 +1,206 @@
+# gerenciador_kanban.py
+import json
+import os
+import sys
+
+DB_FILE = "kanban_db.json"
+
+def load_db():
+    if os.path.exists(DB_FILE):
+        with open(DB_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+def save_db():
+    with open(DB_FILE, "w", encoding="utf-8") as f:
+        json.dump(db, f, ensure_ascii=False, indent=2)
+
+db = load_db()
+
+def create_project():
+    nome = input("Nome do novo projeto: ").strip()
+    tipo = input("Tipo ('kanban' ou 'todo'): ").strip().lower()
+    if nome in db:
+        print("Já existe um projeto com esse nome.")
+        return
+    if tipo == "kanban":
+        db[nome] = {
+            "type": "kanban",
+            "data": {
+                "A Fazer": [],
+                "Em Progresso": [],
+                "Concluído": []
+            }
+        }
+    elif tipo == "todo":
+        db[nome] = {
+            "type": "todo",
+            "data": {
+                "ToDo": [],
+                "Feito": []
+            }
+        }
+    else:
+        print("Tipo inválido.")
+        return
+    save_db()
+    print(f"Projeto '{nome}' criado.")
+
+def list_projects():
+    if not db:
+        print("Nenhum projeto criado ainda.")
+        return
+    print("\n=== Projetos ===")
+    for i, (name, proj) in enumerate(db.items()):
+        print(f"{i+1}. {name} ({proj['type']})")
+    print()
+
+def select_project():
+    list_projects()
+    nome = input("Digite o nome do projeto para abrir: ").strip()
+    if nome not in db:
+        print("Projeto não encontrado.")
+        return None
+    return nome
+
+def show(board, indent=0):
+    for col, tasks in board.items():
+        print(" " * indent + f"[{col}]")
+        for i, task in enumerate(tasks):
+            print(" " * (indent + 2) + f"{i+1}. {task['title']}")
+            if task.get("subtasks"):
+                for j, sub in enumerate(task["subtasks"]):
+                    print(" " * (indent + 5) + f"- {sub}")
+            if task.get("subkanban"):
+                print(" " * (indent + 5) + "(Tem sub-kanban)")
+    print()
+
+def add(board, col, title):
+    if col not in board:
+        print("Coluna inválida.")
+        return
+    board[col].append({"title": title, "subtasks": [], "subkanban": None})
+    print(f"Tarefa '{title}' adicionada em '{col}'.")
+
+def add_subtask(board, col, idx, subt):
+    try:
+        board[col][idx-1]["subtasks"].append(subt)
+        print("Subtarefa adicionada.")
+    except (IndexError, KeyError):
+        print("Erro: coluna ou índice inválido.")
+
+def move(board, c1, c2, idx):
+    try:
+        task = board[c1].pop(idx-1)
+        board[c2].append(task)
+        print("Tarefa movida.")
+    except (IndexError, KeyError):
+        print("Erro ao mover tarefa.")
+
+def delete(board, col, idx):
+    try:
+        t = board[col].pop(idx-1)
+        print(f"Tarefa '{t['title']}' removida.")
+    except (IndexError, KeyError):
+        print("Erro ao remover tarefa.")
+
+def open_subkanban(task):
+    if task["subkanban"] is None:
+        tipo = input("Criar 'kanban' ou 'todo'? ").strip().lower()
+        if tipo == "kanban":
+            task["subkanban"] = {
+                "A Fazer": [],
+                "Em Progresso": [],
+                "Concluído": []
+            }
+        elif tipo == "todo":
+            task["subkanban"] = {
+                "ToDo": [],
+                "Feito": []
+            }
+        else:
+            print("Tipo inválido.")
+            return
+    enter_subkanban(task)
+
+def enter_subkanban(task):
+    board = task["subkanban"]
+    print(f"\nEntrando no subprojeto de '{task['title']}'")
+    while True:
+        cmd = input(f"({task['title']}) >> ").strip().split(" ", 3)
+        if not cmd:
+            continue
+        if cmd[0] == "show":
+            show(board, indent=2)
+        elif cmd[0] == "add" and len(cmd) >= 3:
+            add(board, cmd[1], cmd[2])
+        elif cmd[0] == "add_sub" and len(cmd) >= 4:
+            add_subtask(board, cmd[1], int(cmd[2]), cmd[3])
+        elif cmd[0] == "move" and len(cmd) >= 4:
+            move(board, cmd[1], cmd[2], int(cmd[3]))
+        elif cmd[0] == "del" and len(cmd) >= 3:
+            delete(board, cmd[1], int(cmd[2]))
+        elif cmd[0] == "exit":
+            save_db()
+            break
+        else:
+            print("Comando inválido.")
+
+def enter_project(name):
+    proj = db[name]
+    board = proj["data"]
+    print(f"\n=== Projeto: {name} ({proj['type']}) ===")
+    print("Comandos: show, add, add_sub, move, del, open, exit\n")
+    while True:
+        cmd = input(f"({name}) >> ").strip().split(" ", 3)
+        if not cmd:
+            continue
+        if cmd[0] == "show":
+            show(board)
+        elif cmd[0] == "add" and len(cmd) >= 3:
+            add(board, cmd[1], cmd[2])
+        elif cmd[0] == "add_sub" and len(cmd) >= 4:
+            add_subtask(board, cmd[1], int(cmd[2]), cmd[3])
+        elif cmd[0] == "move" and len(cmd) >= 4:
+            move(board, cmd[1], cmd[2], int(cmd[3]))
+        elif cmd[0] == "del" and len(cmd) >= 3:
+            delete(board, cmd[1], int(cmd[2]))
+        elif cmd[0] == "open" and len(cmd) >= 3:
+            col, idx = cmd[1], int(cmd[2])
+            try:
+                task = board[col][idx-1]
+                open_subkanban(task)
+            except Exception:
+                print("Erro ao abrir subtarefa.")
+        elif cmd[0] == "exit":
+            save_db()
+            break
+        else:
+            print("Comando inválido.")
+        save_db()
+
+def main():
+    print("=== Gerenciador de Kanbans e To-Do Lists ===")
+    while True:
+        print("\nComandos globais:")
+        print("  criar  -> cria novo projeto")
+        print("  mostrar -> lista todos os projetos")
+        print("  abrir  -> abre projeto existente")
+        print("  sair   -> fecha o app")
+        cmd = input(">> ").strip().lower()
+        if cmd == "criar":
+            create_project()
+        elif cmd == "mostrar":
+            list_projects()
+        elif cmd == "abrir":
+            nome = select_project()
+            if nome:
+                enter_project(nome)
+        elif cmd == "sair":
+            save_db()
+            sys.exit()
+        else:
+            print("Comando inválido.")
+
+if __name__ == "__main__":
+    main()
