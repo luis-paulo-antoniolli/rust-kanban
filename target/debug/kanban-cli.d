@@ -1,0 +1,1 @@
+C:\Users\Luisp\.gemini\antigravity\scratch\kanban-cli\target\debug\kanban-cli.exe: C:\Users\Luisp\.gemini\antigravity\scratch\kanban-cli\src\app.rs C:\Users\Luisp\.gemini\antigravity\scratch\kanban-cli\src\main.rs C:\Users\Luisp\.gemini\antigravity\scratch\kanban-cli\src\model.rs C:\Users\Luisp\.gemini\antigravity\scratch\kanban-cli\src\ui.rs
