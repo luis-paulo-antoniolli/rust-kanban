@@ -1,9 +1,10 @@
 use crate::model::{Board, Task, TaskContent, TodoItem};
 use anyhow::Result;
-use sled::Db;
+use bincode::config;
+use std::fs;
+use std::path::PathBuf;
 
-const DB_PATH: &str = "my_db";
-const ROOT_KEY: &str = "root";
+const DB_FILE: &str = "kanban.db";
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputMode {
@@ -38,7 +39,6 @@ pub enum Action {
 }
 
 pub struct App {
-    db: Db,
     pub root: Board,
     pub path: Vec<(usize, usize)>, // Path to current context (col_idx, task_idx)
     pub cursor: (usize, usize),    // (col, row) or (item_idx, 0) for lists
@@ -51,15 +51,22 @@ pub struct App {
 
 impl App {
     pub fn new() -> Result<Self> {
-        let db = sled::open(DB_PATH)?;
-        let root = if let Some(data) = db.get(ROOT_KEY)? {
-            serde_json::from_slice(&data)?
+        // Simple file path
+        let path = PathBuf::from(DB_FILE);
+        
+        let root = if path.exists() {
+            let data = fs::read(&path)?;
+            // Try Bincode
+            if let Ok(board) = bincode::serde::decode_from_slice(&data, config::standard()).map(|(b, _)| b) {
+                board
+            } else {
+                 Board::default()
+            }
         } else {
-            Board::default()
+             Board::default()
         };
 
         Ok(Self {
-            db,
             root,
             path: Vec::new(),
             cursor: (0, 0),
@@ -72,9 +79,8 @@ impl App {
     }
 
     pub fn save(&mut self) -> Result<()> {
-        let json = serde_json::to_vec(&self.root)?;
-        self.db.insert(ROOT_KEY, json)?;
-        self.db.flush()?;
+        let bytes = bincode::serde::encode_to_vec(&self.root, config::standard())?;
+        fs::write(DB_FILE, bytes)?;
         self.dirty = false;
         Ok(())
     }

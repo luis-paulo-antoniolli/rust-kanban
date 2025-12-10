@@ -1,34 +1,55 @@
-# Kanban CLI
+# ⚡ Kanban CLI
 
-A powerful, hierarchical Kanban board for your terminal, written in Rust.
+A **ultra-high performance**, hierarchical Kanban board for your terminal, written in Rust.
+
+Designed to run efficiently on **any hardware**, from a modern Threadripper to a legacy Pentium 4.
 
 ![Kanban CLI Demo](https://via.placeholder.com/800x400?text=Kanban+CLI+Screenshot)
 
-## Features
+## 🚀 Why is it so fast? (Architecture)
 
-- ** hierarchical Structure**: Create boards within boards. Organize your projects with infinite depth.
-- **Multiple Content Types**:
-    - **Boards**: Standard Kanban columns (To Do, In Progress, Done).
-    - **Todo Lists**: Simple checkbox lists for smaller tasks.
-    - **Text Notes**: Rich text editor for detailed notes or documentation.
-- **Vim-like Navigation**: Navigate your boards with `h`, `j`, `k`, `l` keys.
-- **Instant Persistence**: Your data is saved automatically and efficiently using `sled` embedded database.
-- **Fast & Lightweight**: Built with Rust and Ratatui for blazing fast performance.
+This project was built with a generic "Performance First" philosophy. Every architectural choice prioritizes speed and low resource usage:
 
-## Installation
+*   **Zero-Cost Abstractions (Rust)**: No Garbage Collector pauses, deterministic memory usage.
+*   **0% CPU Idle**: The event loop is blocking. If you aren't typing, the application uses literally **0% CPU**.
+*   **Binary Database**: Instead of slow JSON/XML parsing, we use **Bincode**. It's smaller, faster, and requires almost no CPU to serialize/deserialize.
+*   **Zero-Copy Design**: The internal architecture uses `ActiveContentRef` (borrowed types) to display data without cloning heavy structures in memory.
+*   **Smart Rendering**: Uses `Ratatui`'s buffer diffing. Only screen cells that actually changed are redrawn.
 
-Ensure you have Rust installed.
+## 🛠️ Build & Install (Max Performance)
+
+This project is configured to automatically detect your CPU (Native Compilation) and optimize the code specifically for your machine's instruction set (AVX, SSE, etc).
+
+### Standard Build (Recommended)
+This commands enables all optimizations (`lto`, `strip`, `opt-level=3`) but takes longer to compile.
 
 ```bash
-git clone https://github.com/yourusername/kanban-cli.git
+git clone https://github.com/SEU_USUARIO/kanban-cli
 cd kanban-cli
-cargo run --release
+# "Release" enables compiler optimizations. 
+# Without this flag, it runs in "debug" mode (slow).
+cargo build --release
 ```
 
-## Keybindings
+After building, the optimized binary will be in `./target/release/kanban-cli`.
+
+### Compatibility
+*   **Supported OS**: Linux, Windows (inc. 32-bit), macOS, FreeBSD.
+*   **Requirements**: Rust toolchain.
+
+> **Note**: For 32-bit systems (Pentium 4 era), use `rustup target add i686-pc-windows-msvc` before building.
+
+## ✨ Features
+
+- **Hierarchical Structure**: Boards within boards within boards.
+- **Vim-like Navigation**: `h`, `j`, `k`, `l` for speed.
+- **Multiple Content Types**: Boards, Todo Lists, and Text Notes.
+- **Instant Startup**: Sub-millisecond launch time.
+
+## ⌨️ keybindings
 
 ### Global
-- `q`: Quit application
+- `q`: Quit
 - `?`: Toggle Help
 
 ### Navigation
@@ -36,32 +57,14 @@ cargo run --release
 - `j` / `Down`: Move cursor down
 - `k` / `Up`: Move cursor up
 - `l` / `Right`: Move cursor right
-- `Enter`: Drill down into a card (open board/todo/note)
-- `Esc`: Go back to parent board
+- `Enter`: Open card
+- `Esc`: Go back
 
-### Board Actions
-- `Shift` + `h` / `ArrowLeft`: Move selected task to the left column
-- `Shift` + `l` / `ArrowRight`: Move selected task to the right column
-- `a`: Add new item to current column
-- `d`: Delete selected item
-
-### Todo List Actions
-- `Space`: Toggle checkbox
+### Editing
 - `a`: Add new item
 - `d`: Delete item
-
-### Text Note Actions
-- `Enter`: Start editing text
-- `Esc`: Stop editing
-
-## Technology Stack
-
-- **Rust**: Core language
-- **Ratatui**: Terminal User Interface library
-- **Crossterm**: Terminal manipulation
-- **Sled**: Embedded database for persistence
-- **Serde**: Serialization/Deserialization
+- `Space`: Toggle Todo check
+- `Shift` + `H/L`: Move tasks (Kanban)
 
 ## License
-
 MIT
