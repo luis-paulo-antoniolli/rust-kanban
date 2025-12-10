@@ -76,6 +76,7 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut A
                                 KeyCode::Enter => Some(Action::DrillDown),
                                 KeyCode::Backspace | KeyCode::Esc => Some(Action::GoBack),
                                 KeyCode::Char('a') => Some(Action::EnterEditMode),
+                                KeyCode::Char('c') => Some(Action::EnterAddColumnMode),
                                 KeyCode::Char('d') => Some(Action::DeleteTask),
                                 KeyCode::Char(' ') => Some(Action::ToggleTodo),
                                 
@@ -86,7 +87,7 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut A
                             }
                         }
                     },
-                    InputMode::Editing => match key.code {
+                    InputMode::Editing | InputMode::EditingColumn => match key.code {
                         KeyCode::Enter => Some(Action::SubmitTask),
                         KeyCode::Esc => Some(Action::ExitEditMode),
                         KeyCode::Char(c) => Some(Action::InputChar(c)),

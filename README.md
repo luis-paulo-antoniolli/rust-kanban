@@ -62,6 +62,7 @@ After building, the optimized binary will be in `./target/release/kanban-cli`.
 
 ### Editing
 - `a`: Add new item
+- `c`: Create new column
 - `d`: Delete item
 - `Space`: Toggle Todo check
 - `Shift` + `H/L`: Move tasks (Kanban)

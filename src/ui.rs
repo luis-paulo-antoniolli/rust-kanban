@@ -40,7 +40,7 @@ pub fn draw(f: &mut Frame, app: &App) {
 
     draw_footer(f, app, chunks[2]);
 
-    if app.input_mode == InputMode::Editing {
+    if app.input_mode == InputMode::Editing || app.input_mode == InputMode::EditingColumn {
         draw_input_popup(f, app);
     } else if app.input_mode == InputMode::SelectType {
         draw_type_selection_popup(f);
@@ -259,9 +259,13 @@ fn draw_input_popup(f: &mut Frame, app: &App) {
     let area = centered_rect(60, 20, f.area());
     f.render_widget(Clear, area);
 
-    let title = match app.get_active_content() {
-        ActiveContentRef::Text(_) => " Edit Note ",
-        _ => " New Item ",
+    let title = if app.input_mode == InputMode::EditingColumn {
+        " New Column "
+    } else {
+        match app.get_active_content() {
+            ActiveContentRef::Text(_) => " Edit Note ",
+            _ => " New Item ",
+        }
     };
 
     let input = Paragraph::new(app.input_buffer.as_str())
@@ -307,6 +311,7 @@ fn draw_help_popup(f: &mut Frame) {
         Row::new(vec!["Enter", "Drill Down / Edit"]),
         Row::new(vec!["Esc", "Go Back / Cancel"]),
         Row::new(vec!["a", "Add Item"]),
+        Row::new(vec!["c", "Add Column"]),
         Row::new(vec!["d", "Delete Item"]),
         Row::new(vec!["Space", "Toggle Todo"]),
         Row::new(vec!["?", "Toggle Help"]),

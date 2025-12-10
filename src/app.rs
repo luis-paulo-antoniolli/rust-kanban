@@ -10,6 +10,7 @@ const DB_FILE: &str = "kanban.db";
 pub enum InputMode {
     Normal,
     Editing,
+    EditingColumn, // New mode for adding columns
     SelectType, // New mode for choosing content type
 }
 
@@ -26,6 +27,7 @@ pub enum Action {
     DrillDown,
     GoBack,
     EnterEditMode,
+    EnterAddColumnMode, // New action
     ExitEditMode,
     InputChar(char),
     InputBackspace,
@@ -111,6 +113,14 @@ impl App {
                      if can_edit {
                         self.input_mode = InputMode::Editing;
                      } 
+                }
+            },
+            Action::EnterAddColumnMode => {
+                if !self.show_help {
+                    // Only allow adding columns if we are viewing a board
+                    if let ActiveContentRef::Board(_) = self.get_active_content() {
+                        self.input_mode = InputMode::EditingColumn;
+                    }
                 }
             },
             Action::ExitEditMode => {
@@ -253,6 +263,18 @@ impl App {
     }
 
     fn submit_input(&mut self) {
+        if self.input_mode == InputMode::EditingColumn {
+            let title = self.input_buffer.trim().to_string();
+            if !title.is_empty() {
+                 let board = Self::get_board_recursive(&mut self.root, &self.path);
+                 board.columns.push(crate::model::Column::new(&title));
+                 self.dirty = true;
+            }
+            self.input_buffer.clear();
+            self.input_mode = InputMode::Normal;
+            return;
+        }
+
         match self.get_active_content() {
             ActiveContentRef::Board(_) => {
                 // Adding variable to avoid borrow checker hell
