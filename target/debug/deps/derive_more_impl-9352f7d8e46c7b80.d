@@ -1,9 +1,0 @@
-C:\Users\Luisp\.gemini\antigravity\scratch\kanban-cli\target\debug\deps\derive_more_impl-9352f7d8e46c7b80.d: C:\Users\Luisp\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\derive_more-impl-2.1.0\src\lib.rs C:\Users\Luisp\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\derive_more-impl-2.1.0\src\utils.rs C:\Users\Luisp\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\derive_more-impl-2.1.0\src\is_variant.rs C:\Users\Luisp\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\derive_more-impl-2.1.0\src\../README.md C:\Users\Luisp\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\derive_more-impl-2.1.0\src\../doc/is_variant.md
-
-C:\Users\Luisp\.gemini\antigravity\scratch\kanban-cli\target\debug\deps\derive_more_impl-9352f7d8e46c7b80.dll: C:\Users\Luisp\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\derive_more-impl-2.1.0\src\lib.rs C:\Users\Luisp\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\derive_more-impl-2.1.0\src\utils.rs C:\Users\Luisp\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\derive_more-impl-2.1.0\src\is_variant.rs C:\Users\Luisp\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\derive_more-impl-2.1.0\src\../README.md C:\Users\Luisp\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\derive_more-impl-2.1.0\src\../doc/is_variant.md
-
-C:\Users\Luisp\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\derive_more-impl-2.1.0\src\lib.rs:
-C:\Users\Luisp\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\derive_more-impl-2.1.0\src\utils.rs:
-C:\Users\Luisp\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\derive_more-impl-2.1.0\src\is_variant.rs:
-C:\Users\Luisp\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\derive_more-impl-2.1.0\src\../README.md:
-C:\Users\Luisp\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\derive_more-impl-2.1.0\src\../doc/is_variant.md:

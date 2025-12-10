@@ -46,6 +46,7 @@ pub struct App {
     pub input_buffer: String,
     pub should_quit: bool,
     pub show_help: bool,
+    pub dirty: bool,
 }
 
 impl App {
@@ -66,13 +67,15 @@ impl App {
             input_buffer: String::new(),
             should_quit: false,
             show_help: false,
+            dirty: false,
         })
     }
 
-    pub fn save(&self) -> Result<()> {
+    pub fn save(&mut self) -> Result<()> {
         let json = serde_json::to_vec(&self.root)?;
         self.db.insert(ROOT_KEY, json)?;
         self.db.flush()?;
+        self.dirty = false;
         Ok(())
     }
 
@@ -97,12 +100,11 @@ impl App {
             Action::EnterEditMode => {
                 if !self.show_help {
                      // Check if valid context for adding tasks (Board or Todo)
-                     if let ActiveContent::Board(_) | ActiveContent::Todo(_) = self.get_active_content() {
+                     // Using short block to limit borrow scope
+                     let can_edit = matches!(self.get_active_content(), ActiveContentRef::Board(_) | ActiveContentRef::Todo(_));
+                     if can_edit {
                         self.input_mode = InputMode::Editing;
                      } 
-                     // If Text, maybe EnterEditMode allows replacing text? 
-                     // For now, let's keep 'a' for adding items to lists. 
-                     // Text editing is done via DrillDown -> InputMode::Editing
                 }
             },
             Action::ExitEditMode => {
@@ -122,8 +124,10 @@ impl App {
             Action::SelectText => self.initialize_content(TaskContent::Text(String::new())),
         }
 
-        // Auto-save
-        if !matches!(action, Action::InputChar(_) | Action::InputBackspace | Action::MoveUp | Action::MoveDown | Action::MoveLeft | Action::MoveRight | Action::MoveTaskLeft | Action::MoveTaskRight) {
+
+
+        // Auto-save only if dirty
+        if self.dirty {
             let _ = self.save();
         }
 
@@ -134,7 +138,7 @@ impl App {
         if self.input_mode != InputMode::Normal || self.show_help { return; }
 
         match self.get_active_content() {
-            ActiveContent::Board(board) => {
+            ActiveContentRef::Board(board) => {
                 let col_count = board.columns.len();
                 if col_count == 0 { return; }
                 let (mut c, mut r) = (self.cursor.0 as i32, self.cursor.1 as i32);
@@ -155,22 +159,22 @@ impl App {
 
                 self.cursor = (c as usize, r as usize);
             },
-            ActiveContent::Todo(items) => {
+            ActiveContentRef::Todo(items) => {
                 let len = items.len();
                 if len == 0 { return; }
                 let mut r = self.cursor.1 as i32;
                 if dy != 0 { r = (r + dy).clamp(0, len as i32 - 1); }
                 self.cursor = (0, r as usize);
             },
-            ActiveContent::Text(_) => {
+            ActiveContentRef::Text(_) => {
                 // No cursor movement in text view for now (view only)
             },
-            ActiveContent::None => {},
+            ActiveContentRef::None => {},
         }
     }
 
     fn handle_drill_down(&mut self) {
-        if let ActiveContent::Board(board) = self.get_active_content() {
+        if let ActiveContentRef::Board(board) = self.get_active_content() {
             let (c, r) = self.cursor;
             if let Some(col) = board.columns.get(c) {
                 if let Some(task) = col.tasks.get(r) {
@@ -185,18 +189,20 @@ impl App {
                         // Let's keep it view-only first, then Enter again to edit?
                         // For simplicity: If entering Text content, we just view it. 
                         // User can press 'Enter' inside Text view to edit (implemented below).
-                        if let ActiveContent::Text(text) = self.get_active_content() {
+                        if let ActiveContentRef::Text(text) = self.get_active_content() {
+                             let text_content = text.clone();
                              self.input_mode = InputMode::Editing;
-                             self.input_buffer = text.clone();
+                             self.input_buffer = text_content;
                         }
                     }
                 }
             }
-        } else if let ActiveContent::Text(_) = self.get_active_content() {
+        } else if let ActiveContentRef::Text(_) = self.get_active_content() {
             // If already in text view, Enter to edit
-             if let ActiveContent::Text(text) = self.get_active_content() {
+             if let ActiveContentRef::Text(text) = self.get_active_content() {
+                 let text_content = text.clone();
                  self.input_mode = InputMode::Editing;
-                 self.input_buffer = text.clone();
+                 self.input_buffer = text_content;
              }
         }
     }
@@ -224,14 +230,15 @@ impl App {
          
          // Helper to mutate current selection
          {
-             let (c, r) = self.cursor;
-             // We need to get the PARENT board.
-             let board = self.get_active_board_mut(); // This gets the board we are LOOKING at.
-             if let Some(col) = board.columns.get_mut(c) {
-                 if let Some(task) = col.tasks.get_mut(r) {
-                     task.content = Some(content.clone());
-                 }
+         let (c, r) = self.cursor;
+         // We need to get the PARENT board.
+         let board = Self::get_board_recursive(&mut self.root, &self.path); // This gets the board we are LOOKING at.
+         if let Some(col) = board.columns.get_mut(c) {
+             if let Some(task) = col.tasks.get_mut(r) {
+                 task.content = Some(content.clone());
+                 self.dirty = true;
              }
+         }
          }
          
          self.input_mode = InputMode::Normal;
@@ -241,18 +248,19 @@ impl App {
 
     fn submit_input(&mut self) {
         match self.get_active_content() {
-            ActiveContent::Board(_) => {
+            ActiveContentRef::Board(_) => {
                 // Adding variable to avoid borrow checker hell
                 let title = self.input_buffer.trim().to_string();
                 if !title.is_empty() {
                     let (c, _) = self.cursor;
-                    let board = self.get_active_board_mut();
+                    let board = Self::get_board_recursive(&mut self.root, &self.path);
                     if c < board.columns.len() {
                         board.columns[c].tasks.push(Task::new(&title, ""));
+                        self.dirty = true;
                     }
                 }
             },
-            ActiveContent::Todo(_) => {
+            ActiveContentRef::Todo(_) => {
                 let text = self.input_buffer.trim().to_string();
                 if !text.is_empty() {
                     let _items: Vec<TodoItem> = Vec::new(); // placeholder - unused logic branch if we just want to submit simple task?
@@ -266,13 +274,15 @@ impl App {
                     let text = self.input_buffer.trim().to_string();
                     if !text.is_empty() {
                          self.add_todo_item(text);
+                         // self.dirty set inside add_todo_item
                     }
                 }
             },
-            ActiveContent::Text(_) => {
+            ActiveContentRef::Text(_) => {
                 // Saving text content
                 let text = self.input_buffer.clone();
                 self.set_text_content(text);
+                // self.dirty set inside set_text_content
             },
              _ => {}
         }
@@ -282,21 +292,23 @@ impl App {
 
     fn delete_item(&mut self) {
         match self.get_active_content() {
-            ActiveContent::Board(board) => {
+            ActiveContentRef::Board(board) => {
                 let (c, r) = self.cursor;
                 if c < board.columns.len() && r < board.columns[c].tasks.len() {
-                    let board_mut = self.get_active_board_mut();
+                    let board_mut = Self::get_board_recursive(&mut self.root, &self.path);
                     board_mut.columns[c].tasks.remove(r);
+                    self.dirty = true;
                     // Adjust cursor
                      if r >= board_mut.columns[c].tasks.len() && r > 0 {
                         self.cursor.1 -= 1;
                     }
                 }
             },
-            ActiveContent::Todo(items) => {
+            ActiveContentRef::Todo(items) => {
                 let r = self.cursor.1;
                 if r < items.len() {
                    self.remove_todo_item(r);
+                   // self.dirty handled inside
                    if r > 0 { self.cursor.1 = r.saturating_sub(1); }
                 }
             },
@@ -305,7 +317,7 @@ impl App {
     }
 
     fn toggle_todo(&mut self) {
-        if let ActiveContent::Todo(items) = self.get_active_content() {
+        if let ActiveContentRef::Todo(items) = self.get_active_content() {
             let r = self.cursor.1;
             if r < items.len() {
                 self.toggle_todo_item(r);
@@ -332,7 +344,7 @@ impl App {
         crumbs
     }
 
-    pub fn get_active_content(&self) -> ActiveContent {
+    pub fn get_active_content(&self) -> ActiveContentRef<'_> {
         // Traverse to the tip of path
         let mut board = &self.root;
 
@@ -345,25 +357,21 @@ impl App {
                         // Leaf is not a board, so return its content
                         if let Some(ref content) = task.content {
                             match content {
-                                TaskContent::Todo(items) => return ActiveContent::Todo(items.clone()),
-                                TaskContent::Text(txt) => return ActiveContent::Text(txt.clone()),
+                                TaskContent::Todo(items) => return ActiveContentRef::Todo(items),
+                                TaskContent::Text(txt) => return ActiveContentRef::Text(txt),
                                 TaskContent::Board(_) => {}
                             }
                         } else {
-                             return ActiveContent::None;
+                             return ActiveContentRef::None;
                         }
                     }
                 }
             }
         }
-        ActiveContent::Board(board.clone())
+        ActiveContentRef::Board(board)
     }
 
-    // Helper to get mutable reference to the board we are currently VIEWING
-    // If we are viewing a Todo/Text, this doesn't make sense, so use with care (only when ActiveContent is Board)
-    fn get_active_board_mut(&mut self) -> &mut Board {
-        Self::get_board_recursive(&mut self.root, &self.path)
-    }
+
 
     fn get_board_recursive<'a>(board: &'a mut Board, path: &[(usize, usize)]) -> &'a mut Board {
         if path.is_empty() {
@@ -385,6 +393,7 @@ impl App {
             if let Some(TaskContent::Todo(ref mut items)) = task.content {
                 items.push(TodoItem { text, done: false });
                 items.sort_by_key(|k| k.done);
+                self.dirty = true;
             }
         }
     }
@@ -392,7 +401,10 @@ impl App {
     fn remove_todo_item(&mut self, index: usize) {
         if let Some(task) = Self::get_task_mut_recursive(&mut self.root, &self.path) {
             if let Some(TaskContent::Todo(ref mut items)) = task.content {
-                if index < items.len() { items.remove(index); }
+                if index < items.len() { 
+                    items.remove(index); 
+                    self.dirty = true;
+                }
             }
         }
     }
@@ -402,6 +414,7 @@ impl App {
              if let Some(TaskContent::Todo(ref mut items)) = task.content {
                  if let Some(item) = items.get_mut(index) {
                      item.done = !item.done;
+                     self.dirty = true;
                  }
                  items.sort_by_key(|k| k.done);
              }
@@ -411,6 +424,7 @@ impl App {
     fn set_text_content(&mut self, text: String) {
         if let Some(task) = Self::get_task_mut_recursive(&mut self.root, &self.path) {
             task.content = Some(TaskContent::Text(text));
+            self.dirty = true;
         }
     }
 
@@ -418,7 +432,7 @@ impl App {
         if self.input_mode != InputMode::Normal { return; }
         
         // Only works if active content is a Board (tasks move between columns)
-        if let ActiveContent::Board(board) = self.get_active_content() {
+        if let ActiveContentRef::Board(board) = self.get_active_content() {
              let (c, r) = self.cursor;
              let new_c = c as i32 + dir;
              
@@ -428,12 +442,13 @@ impl App {
              }
              let new_c = new_c as usize;
              
-             // Mutate
-             {
-                 let board_mut = self.get_active_board_mut();
-                 if r < board_mut.columns[c].tasks.len() {
+              // Mutate
+              {
+                  let board_mut = Self::get_board_recursive(&mut self.root, &self.path);
+                  if r < board_mut.columns[c].tasks.len() {
                      let task = board_mut.columns[c].tasks.remove(r);
                      board_mut.columns[new_c].tasks.push(task);
+                     self.dirty = true;
                      
                      // Adjust cursor
                      // If we moved right, we are now at the bottom of new_c? 
@@ -473,9 +488,9 @@ impl App {
 // Actually we clone board for `get_active_content` which is not ideal for performance but fine for CLI.
 // Optimization: Return Cow or references? Complex with App struct borrowing.
 // For now, cloning Board is okay-ish if deep trees aren't huge.
-pub enum ActiveContent {
-    Board(Board),
-    Todo(Vec<TodoItem>),
-    Text(String),
+pub enum ActiveContentRef<'a> {
+    Board(&'a Board),
+    Todo(&'a Vec<TodoItem>),
+    Text(&'a String),
     None,
 }

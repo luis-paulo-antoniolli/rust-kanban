@@ -5,7 +5,7 @@ use ratatui::{
     widgets::{Block, Borders, BorderType, List, ListItem, Paragraph, Clear, Wrap, Table, Row},
     Frame,
 };
-use crate::app::{App, InputMode, ActiveContent};
+use crate::app::{App, InputMode, ActiveContentRef};
 use crate::model::TaskContent;
 
 // Theme Constants
@@ -32,10 +32,10 @@ pub fn draw(f: &mut Frame, app: &App) {
     
     // Determine what to draw based on active content
     match app.get_active_content() {
-        ActiveContent::Board(board) => draw_board(f, app, &board, chunks[1]),
-        ActiveContent::Todo(items) => draw_todo(f, app, &items, chunks[1]),
-        ActiveContent::Text(text) => draw_text_view(f, app, &text, chunks[1]),
-        ActiveContent::None => draw_empty_selection(f, chunks[1]), 
+        ActiveContentRef::Board(board) => draw_board(f, app, board, chunks[1]),
+        ActiveContentRef::Todo(items) => draw_todo(f, app, items, chunks[1]),
+        ActiveContentRef::Text(text) => draw_text_view(f, app, text, chunks[1]),
+        ActiveContentRef::None => draw_empty_selection(f, chunks[1]), 
     }
 
     draw_footer(f, app, chunks[2]);
@@ -242,10 +242,10 @@ fn draw_empty_selection(f: &mut Frame, area: Rect) {
 
 fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
     let help_text = match app.get_active_content() {
-        ActiveContent::Board(_) => "Moves: Shift+Arrows | Enter: Open | a: Add | d: Del | ?: Help",
-        ActiveContent::Todo(_) => "Move: jk/Arrows | Space: Toggle | a: Add Item | d: Del | Esc: Back",
-        ActiveContent::Text(_) => "Enter: Edit Text | Esc: Back",
-        ActiveContent::None => "Enter: Select Content Type | Esc: Back",
+        ActiveContentRef::Board(_) => "Moves: Shift+Arrows | Enter: Open | a: Add | d: Del | ?: Help",
+        ActiveContentRef::Todo(_) => "Move: jk/Arrows | Space: Toggle | a: Add Item | d: Del | Esc: Back",
+        ActiveContentRef::Text(_) => "Enter: Edit Text | Esc: Back",
+        ActiveContentRef::None => "Enter: Select Content Type | Esc: Back",
     };
     
     let help = Paragraph::new(help_text)
@@ -260,7 +260,7 @@ fn draw_input_popup(f: &mut Frame, app: &App) {
     f.render_widget(Clear, area);
 
     let title = match app.get_active_content() {
-        ActiveContent::Text(_) => " Edit Note ",
+        ActiveContentRef::Text(_) => " Edit Note ",
         _ => " New Item ",
     };
 
